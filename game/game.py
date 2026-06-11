@@ -25,12 +25,15 @@ from typing import Optional
 from game.contract import GameEvent, GameView, GhostView
 from game.maze import MazeGenerationError, build_maze
 
-# Temporary: put the colleague's engine on the path until the repo restructure
-# moves engine/ to the root (doc 01 §4). Until then it lives in pacman-core/.
+# engine/ and parser/ live in the pacman-core git submodule (the colleague's
+# repo). Append it to the path — appending (not inserting) keeps site-packages
+# ahead, so the installed mazegenerator *wheel* wins over the submodule's
+# vendored copy (avoiding the import-shadowing trap), while engine/parser,
+# which exist only here, still resolve.
 _CORE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pacman-core")
 if _CORE not in sys.path:
-    sys.path.insert(0, _CORE)
+    sys.path.append(_CORE)
 
 from engine import Map                                    # noqa: E402
 from engine.ghost import Ghost, State, Strategy           # noqa: E402
@@ -76,7 +79,8 @@ class Game:
         """Read config defensively and start on level 0."""
         self._config = config
         self._pts_pacgum = _to_int(config, "points_per_pacgum", 10, 0, 10_000)
-        self._pts_super = _to_int(config, "points_per_super_pacgum", 50, 0, 10_000)
+        self._pts_super = _to_int(
+            config, "points_per_super_pacgum", 50, 0, 10_000)
         self._pts_ghost = _to_int(config, "points_per_ghost", 200, 0, 10_000)
         self._max_time = _to_int(config, "level_max_time", 90, 1, 3_600)
         self._start_lives = _to_int(config, "lives", 3, 1, 99)
@@ -96,16 +100,19 @@ class Game:
 
     # ------------------------------------------------------------------ setup
     def _level_size(self, index: int) -> tuple[int, int]:
-        """Maze size for a level, from config if present, clamped to a safe range."""
+        """Maze size for a level, from config, clamped to a safe range."""
         width = height = _DEFAULT_SIZE
         if 0 <= index < len(self._levels):
             entry = self._levels[index]
             if isinstance(entry, dict):
-                width = _to_int(entry, "width", _DEFAULT_SIZE, _MIN_SIZE, _MAX_SIZE)
-                height = _to_int(entry, "height", _DEFAULT_SIZE, _MIN_SIZE, _MAX_SIZE)
+                width = _to_int(entry, "width", _DEFAULT_SIZE,
+                                _MIN_SIZE, _MAX_SIZE)
+                height = _to_int(entry, "height", _DEFAULT_SIZE,
+                                 _MIN_SIZE, _MAX_SIZE)
         return width, height
 
-    def _make_maze(self, width: int, height: int, seed: int) -> list[list[int]]:
+    def _make_maze(self, width: int, height: int,
+                   seed: int) -> list[list[int]]:
         """Generate a maze, falling back to a safe default if it fails."""
         try:
             return build_maze(width, height, seed)
@@ -138,7 +145,7 @@ class Game:
         self._spawn_ghosts()
 
     def _build_pellets(self, index: int) -> None:
-        """Pellets = a seeded percentage of corridors (or all, in classic mode)."""
+        """Pellets: a seeded percentage of corridors (all in classic mode)."""
         corridors = sorted(self._map.get_pacgums())
         self._superpacgums: set[Pos] = set(self._map.get_superpacgums())
         if self._classic or self._pacgum_pct >= 100:
@@ -176,7 +183,7 @@ class Game:
         if self._game_over:
             return events
         if self._cheats.get("invincible"):
-            self._frighten_all()                     # cheat: ghosts stay edible
+            self._frighten_all()          # cheat: ghosts stay edible
 
         prev_player = self._player.get_position()
         self._move_player(events)
@@ -204,11 +211,11 @@ class Game:
             self._tick_in_second = 0
             self._time_left -= 1
             if self._time_left <= 0:
-                self._lose_life(events)             # frozen: timeout costs a life
+                self._lose_life(events)   # frozen: timeout costs a life
                 self._time_left = self._max_time
 
     def _move_player(self, events: list[GameEvent]) -> None:
-        """Apply the buffered turn if legal, then step (twice with speed cheat)."""
+        """Apply the buffered turn, then step (twice with speed cheat)."""
         steps = 2 if self._cheats.get("speed") else 1
         for _ in range(steps):
             self._apply_direction()
@@ -319,7 +326,7 @@ class Game:
 
     # ------------------------------------------------------------------ cheats
     def set_cheat(self, name: str, on: bool) -> None:
-        """Toggle ``invincible`` | ``freeze`` | ``speed``; unknown names ignored."""
+        """Toggle ``invincible``/``freeze``/``speed``; unknown ignored."""
         if name in ("invincible", "freeze", "speed"):
             self._cheats[name] = on
             if name == "invincible" and on:
@@ -368,7 +375,7 @@ class Game:
             "frightened_ticks_left": self._frightened_ticks,
         }
 
-    # ------------------------------------------------------------------ helpers
+    # --------------------------------------------------------------- helpers
     def _nearest_open(self, target: Pos) -> Pos:
         """Nearest non-solid cell to ``target`` by BFS ring (spawn helper)."""
         from collections import deque

@@ -5,13 +5,10 @@ These need the ``mazegenerator`` wheel installed and the engine on the path
 """
 from __future__ import annotations
 
-import sys
-
 from game.contract import GameEvent, GameProtocol
-from game.game import Game
+from game.game import Game  # noqa: F401  (also puts pacman-core on the path)
 
-sys.path.insert(0, "pacman-core")
-from engine.ghost import State  # noqa: E402
+from engine.ghost import State  # noqa: E402  (resolved via the import above)
 
 CONFIG: dict[str, object] = {
     "lives": 3,
@@ -81,23 +78,23 @@ def test_final_level_skip_is_victory() -> None:
 
 def test_super_pacgum_frightens_ghosts() -> None:
     g = _new()
-    sp = next(iter(g._superpacgums))               # type: ignore[attr-defined]
-    g._player.set_position(*sp, g._map)            # type: ignore[attr-defined]
-    g._eat([])                                     # type: ignore[attr-defined]
+    sp = next(iter(g._superpacgums))
+    g._player.set_position(*sp, g._map)
+    g._eat([])
     assert g.view["frightened_ticks_left"] > 0
     assert all(gh.get_state() == State.FRIGHTENED
-               for gh in g._ghosts)                # type: ignore[attr-defined]
+               for gh in g._ghosts)
 
 
 def test_eaten_ghost_walks_home_and_revives() -> None:
     # Ambusher (offset target) is the case the engine gets wrong;
     g = _new()
-    ghost = g._ghosts[1]                           # type: ignore[attr-defined]
+    ghost = g._ghosts[1]
     for _ in range(20):
-        g._move_ghosts()                           # type: ignore[attr-defined]
+        g._move_ghosts()
     ghost.change_state(State.EATEN)
     for _ in range(600):
-        g._move_ghosts()                           # type: ignore[attr-defined]
+        g._move_ghosts()
         if ghost.get_state() == State.CHASE:
             break
     assert ghost.get_state() == State.CHASE          # revived, not stuck
@@ -106,11 +103,11 @@ def test_eaten_ghost_walks_home_and_revives() -> None:
 def test_invincible_prevents_life_loss() -> None:
     g = _new()
     g.set_cheat("invincible", True)
-    gpos = g._ghosts[0].get_position()             # type: ignore[attr-defined]
-    g._player.set_position(*gpos, g._map)          # type: ignore[attr-defined]
-    player = g._player.get_position()              # type: ignore[attr-defined]
-    ghosts = [gh.get_position() for gh in g._ghosts]  # type: ignore[attr-defined]
-    g._resolve_collisions(player, ghosts, [])      # type: ignore[attr-defined]
+    gpos = g._ghosts[0].get_position()
+    g._player.set_position(*gpos, g._map)
+    player = g._player.get_position()
+    ghosts = [gh.get_position() for gh in g._ghosts]
+    g._resolve_collisions(player, ghosts, [])
     assert g.view["lives"] == 3
 
 
@@ -118,19 +115,19 @@ def test_invincible_frightens_ghosts() -> None:
     g = _new()
     g.set_cheat("invincible", True)
     assert all(gh.get_state() == State.FRIGHTENED
-               for gh in g._ghosts)               # type: ignore[attr-defined]
+               for gh in g._ghosts)
     g.tick()                                          # stays edible while on
     assert g.view["frightened_ticks_left"] > 0
 
 
 def test_frightened_ghost_moves_at_half_speed() -> None:
     g = _new()
-    ghost = g._ghosts[0]                           # type: ignore[attr-defined]
+    ghost = g._ghosts[0]
     ghost.change_state(State.FRIGHTENED)
     moves = 0
     for _ in range(10):
         before = ghost.get_position()
-        g._move_ghosts()                          # type: ignore[attr-defined]
+        g._move_ghosts()
         if ghost.get_position() != before:
             moves += 1
     assert moves < 10                            # not every tick -> catchable

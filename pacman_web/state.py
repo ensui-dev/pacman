@@ -11,8 +11,15 @@ import dataclasses
 import enum
 import os
 import signal
+from typing import TYPE_CHECKING, cast
 
 import reflex as rx
+
+if TYPE_CHECKING:
+    # mypy-only: chained-handler returns type as EventNamespace under the
+    # stubs; at runtime these names are unimportable (lazy loader) and the
+    # postponed annotations are never evaluated.
+    from reflex.event import EventNamespace, EventSpec
 
 import highscores
 from game.config import runtime_config
@@ -85,21 +92,60 @@ class HighRow:
     score: int
 
 
-# All overlays carry grid indices (gx, gy); pixel layout is done in CSS from
+def _walls_svg(maze: list[list[int]]) -> str:
+    """Render the whole wall layer as one SVG string (a single DOM node).
+
+    Coordinates are in cell units (``viewBox`` = cols×rows); the stroke is
+    kept at ``WALL_PX`` device pixels via ``non-scaling-stroke`` so the look
+    matches the old per-cell borders at any board size. Built once per level —
+    large mazes would otherwise mean thousands of wall divs in the DOM.
+    """
+    rows, cols = len(maze), len(maze[0])
+    blocks: list[str] = []
+    edges: list[str] = []
+    for y, row in enumerate(maze):
+        for x, v in enumerate(row):
+            if v == 15:
+                blocks.append(f"M{x} {y}h1v1h-1z")
+            if v & 1:
+                edges.append(f"M{x} {y}h1")
+            if v & 2:
+                edges.append(f"M{x + 1} {y}v1")
+            if v & 4:
+                edges.append(f"M{x} {y + 1}h1")
+            if v & 8:
+                edges.append(f"M{x} {y}v1")
+    return (
+        f'<svg viewBox="0 0 {cols} {rows}" width="100%" height="100%" '
+        f'preserveAspectRatio="none" style="display:block">'
+        f'<path d="{"".join(blocks)}" fill="{style.BLOCK_FILL}"/>'
+        f'<path d="{"".join(edges)}" fill="none" stroke="{style.MAZE_WALL}" '
+        f'stroke-width="{style.WALL_PX}" vector-effect="non-scaling-stroke" '
+        f'stroke-linecap="square"/></svg>'
+    )
+
+
+def _pellets_svg(pellets: list[list[int]], cols: int, rows: int) -> str:
+    """Render all pacgum dots as one SVG string (a single DOM node).
+
+    Rebuilt only on ticks where the pellet count changed; swapping one
+    string is far cheaper (server, wire and React) than re-diffing one
+    component per pellet every tick on large mazes. Each dot is a
+    near-zero-length path segment rendered as a disc by the round line
+    cap — one ``<path>`` for the whole layer keeps the string a third
+    the size of per-``<circle>`` markup.
+    """
+    dots = "".join(f"M{x}.5 {y}.5h.01" for x, y in pellets)
+    return (
+        f'<svg viewBox="0 0 {cols} {rows}" width="100%" height="100%" '
+        f'preserveAspectRatio="none" style="display:block">'
+        f'<path d="{dots}" fill="none" stroke="{style.PELLET}" '
+        f'stroke-width="0.18" stroke-linecap="round"/></svg>'
+    )
+
+
+# Overlays carry grid indices (gx, gy); pixel layout is done in CSS from
 # the responsive --cell variable, so the board scales without re-syncing.
-@dataclasses.dataclass
-class WallCell:
-    """A static wall cell: grid position, per-side edges, solid flag."""
-
-    gx: int
-    gy: int
-    solid: bool
-    bt: str
-    br: str
-    bb: str
-    bl: str
-
-
 @dataclasses.dataclass
 class Dot:
     """A pellet or super-pellet overlay at a grid cell."""
@@ -140,8 +186,8 @@ class GameState(rx.State):
     time_left: int = 0
     frightened_ticks_left: int = 0
 
-    walls: list[WallCell] = []
-    pellets: list[Dot] = []
+    walls_svg: str = ""
+    pellets_svg: str = ""
     supers: list[Dot] = []
     ghosts: list[Sprite] = []
     player_x: int = 0
@@ -175,6 +221,9 @@ class GameState(rx.State):
     _ready_ticks: int = 0
     _popup_seq: int = 0
     _popup_ttls: dict[int, int] = {}
+    # Counts mirrored last sync; -1 forces a rebuild of the derived layer.
+    _pellet_count: int = -1
+    _super_count: int = -1
 
     # -- computed vars
     @rx.var
@@ -279,7 +328,7 @@ class GameState(rx.State):
         self.name_input = highscores.sanitize_name(value)
 
     @rx.event
-    def submit_name(self):
+    def submit_name(self) -> None:
         """Save a qualifying score under entered name, then show the board."""
         if not self.awaiting_name or not highscores.valid_name(
             self.name_input
@@ -298,7 +347,7 @@ class GameState(rx.State):
         return None
 
     @rx.event
-    def name_key(self, key: str):
+    def name_key(self, key: str) -> EventNamespace | None:
         """Enter submits the name; Escape abandons to the menu."""
         k = key.lower()
         if k == "enter":
@@ -307,8 +356,9 @@ class GameState(rx.State):
             return GameState.to_menu
         return None
 
-    @rx.event(background=True)
-    async def exit_game(self):
+    # The stubs type `rx.event` calls without kwargs; runtime accepts them.
+    @rx.event(background=True)  # type: ignore[operator]
+    async def exit_game(self) -> None:
         """Shut the whole app down: show a goodbye screen, then stop server."""
         async with self:
             self.running = False
@@ -318,7 +368,7 @@ class GameState(rx.State):
 
     # -- lifecycle
     @rx.event
-    def new_game(self):
+    def new_game(self) -> EventNamespace:
         """Start a fresh game on level 1 and run the tick loop."""
         self._game = Game(CONFIG)
         self.popups = []
@@ -337,7 +387,8 @@ class GameState(rx.State):
         self._begin_ready("READY!")
         self.running = True
         self._loop_token += 1
-        return GameState.run_loop
+        # run_loop is Any to mypy (its decorator call is type-ignored above)
+        return cast("EventNamespace", GameState.run_loop)
 
     @rx.event
     def to_menu(self) -> None:
@@ -353,13 +404,13 @@ class GameState(rx.State):
         self.confirm_quit = True
 
     @rx.event
-    def cancel_quit(self):
+    def cancel_quit(self) -> EventNamespace:
         """Dismiss the quit confirmation, staying paused."""
         self.confirm_quit = False
         return GameState.refocus
 
     @rx.event
-    def toggle_pause(self):
+    def toggle_pause(self) -> EventNamespace | None:
         """Pause or resume; only meaningful on the game screen."""
         if self.screen == Screen.GAME.value and not self.ready:
             self.paused = not self.paused
@@ -368,14 +419,14 @@ class GameState(rx.State):
         return None
 
     @rx.event
-    def refocus(self):
+    def refocus(self) -> EventSpec:
         """Return focus to the board's key catcher after a dialog/panel."""
-        return rx.call_script(
-            "document.getElementById('keycatcher')?.focus()")
+        return cast("EventSpec", rx.call_script(
+            "document.getElementById('keycatcher')?.focus()"))
 
     # -- cheats
     @rx.event
-    def toggle_cheats(self):
+    def toggle_cheats(self) -> EventNamespace | None:
         """Open/close the cheat panel."""
         self.cheat_open = not self.cheat_open
         if not self.cheat_open:
@@ -421,8 +472,9 @@ class GameState(rx.State):
             self._game.set_cheat(name, value)
         self.cheats_used = True
 
-    @rx.event(background=True)
-    async def run_loop(self):
+    # The stubs type `rx.event` calls without kwargs; runtime accepts them.
+    @rx.event(background=True)  # type: ignore[operator]
+    async def run_loop(self) -> None:
         """Server-side clock: advance the game one tick at a time."""
         async with self:
             token = self._loop_token
@@ -437,7 +489,8 @@ class GameState(rx.State):
             await asyncio.sleep(TICK_MS / 1000)
 
     # -- input
-    def on_key(self, key: str):
+    @rx.event
+    def on_key(self, key: str) -> EventNamespace | None:
         """Route a keypress by screen (menu start, pause, movement)."""
         k = key.lower()
         if self.screen == Screen.MENU.value:
@@ -496,7 +549,9 @@ class GameState(rx.State):
             self._popup_ttls[k] -= 1
             if self._popup_ttls[k] <= 0:
                 del self._popup_ttls[k]
-        self.popups = [p for p in self.popups if p.key in self._popup_ttls]
+        remaining = [p for p in self.popups if p.key in self._popup_ttls]
+        if len(remaining) != len(self.popups):
+            self.popups = remaining
 
     def _spawn_popups(self, events: list[GameEvent]) -> None:
         """Add a floating ``+N`` popup at the player for each scoring event."""
@@ -537,36 +592,55 @@ class GameState(rx.State):
         self.name_input = self._last_name if self.awaiting_name else ""
 
     def _build_walls(self) -> None:
-        """Rebuild the static wall layer from the current maze."""
+        """Rebuild the static wall SVG and board dims from the current maze."""
         assert self._game is not None
         maze = self._game.view["maze"]
         self.board_cols = len(maze[0])
         self.board_rows = len(maze)
-        cells: list[WallCell] = []
-        for y, row in enumerate(maze):
-            for x, v in enumerate(row):
-                cells.append(WallCell(
-                    gx=x, gy=y, solid=v == 15,
-                    bt=style.WALL_EDGE if v & 1 else style.NO_EDGE,
-                    br=style.WALL_EDGE if v & 2 else style.NO_EDGE,
-                    bb=style.WALL_EDGE if v & 4 else style.NO_EDGE,
-                    bl=style.WALL_EDGE if v & 8 else style.NO_EDGE,
-                ))
-        self.walls = cells
+        self.walls_svg = _walls_svg(maze)
+        self._pellet_count = -1     # force pellet/super layer rebuilds
+        self._super_count = -1
 
     def _sync(self) -> None:
-        """Copy the game's view into the mirrored, serialized vars."""
+        """Mirror the game's view into the serialized vars — changes only.
+
+        Reflex marks a var dirty on *assignment* (it never compares values),
+        and every dirty var is resent in full over the websocket each tick.
+        So each mirror below is guarded: unchanged values are not assigned,
+        and the pellet layer is rebuilt only when the count moved (within a
+        level pellets only ever shrink). This is what keeps large maps from
+        lagging — without the guards every tick reships the whole board.
+        """
         assert self._game is not None
         v = self._game.view
-        self.score = v["score"]
-        self.lives = v["lives"]
-        self.level = v["level"]
-        self.time_left = v["time_left"]
-        self.frightened_ticks_left = v["frightened_ticks_left"]
-        self.player_x, self.player_y = v["player"]
-        self.player_dir = v["player_dir"]
-        self.pellets = [Dot(gx=x, gy=y) for x, y in v["pacgums"]]
-        self.supers = [Dot(gx=x, gy=y) for x, y in v["super_pacgums"]]
+        if self.score != v["score"]:
+            self.score = v["score"]
+        if self.lives != v["lives"]:
+            self.lives = v["lives"]
+        if self.level != v["level"]:
+            self.level = v["level"]
+        if self.time_left != v["time_left"]:
+            self.time_left = v["time_left"]
+        if self.frightened_ticks_left != v["frightened_ticks_left"]:
+            self.frightened_ticks_left = v["frightened_ticks_left"]
+        px, py = v["player"]
+        if self.player_x != px:
+            self.player_x = px
+        if self.player_y != py:
+            self.player_y = py
+        if self.player_dir != v["player_dir"]:
+            self.player_dir = v["player_dir"]
+
+        if len(v["pacgums"]) != self._pellet_count:
+            self._pellet_count = len(v["pacgums"])
+            self.pellets_svg = _pellets_svg(
+                v["pacgums"], self.board_cols, self.board_rows)
+        if len(v["super_pacgums"]) != self._super_count:
+            self._super_count = len(v["super_pacgums"])
+            self.supers = [Dot(gx=x, gy=y) for x, y in v["super_pacgums"]]
+
+        # Ghosts move nearly every tick; 4 sprites are a tiny payload, so
+        # resending them beats comparing proxied dataclass lists.
         ending = 0 < self.frightened_ticks_left <= FRIGHTENED_BLINK_TICKS
         self.ghosts = [
             Sprite(

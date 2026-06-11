@@ -46,7 +46,7 @@ class _Ghost:
     home: Pos
     color: str
     state: GhostState
-    last: Pos = (0, 0)            # last step taken (to avoid reversing while fleeing)
+    last: Pos = (0, 0)      # last step taken (no reversing while fleeing)
 
 
 def _to_int(config: dict[str, object], key: str, default: int,
@@ -98,7 +98,7 @@ class FakeGame:
         self._game_over = False
         self._won_game = False
         self._cheats: dict[str, bool] = {}
-        self._rng = random.Random(20240611)   # deterministic wander for frightened
+        self._rng = random.Random(20240611)   # deterministic wander
         self.start_level(0)
 
     # -- setup
@@ -234,12 +234,13 @@ class FakeGame:
                     continue
                 g.pos = self._greedy_step(g.pos, g.home, flee=False)
             elif g.state == GhostState.FRIGHTENED:
-                # Wander randomly while edible: keeps the four moving and apart,
-                # unlike a shared flee target (they'd merge) or a fixed corner
-                # (they'd pile up and freeze). Close to arcade frightened motion.
+                # Wander randomly while edible: keeps the four moving and
+                # apart, unlike a shared flee target (they'd merge) or a
+                # fixed corner (pile-up). Close to arcade frightened motion.
                 g.pos = self._wander_step(g)
             else:
-                g.pos = self._greedy_step(g.pos, self._chase_target(g), flee=False)
+                g.pos = self._greedy_step(
+                    g.pos, self._chase_target(g), flee=False)
 
     def _resolve_collisions(self, prev_player: Pos, prev_ghosts: list[Pos],
                             events: list[GameEvent]) -> None:
@@ -377,7 +378,7 @@ class FakeGame:
         return best
 
     def _wander_step(self, g: _Ghost) -> Pos:
-        """Pick a random legal neighbor, preferring not to reverse direction."""
+        """Pick a random legal neighbor, preferring not to reverse."""
         x, y = g.pos
         moves = [(dx, dy) for dx, dy, bit in _STEPS
                  if not (self._maze[y][x] & bit)]

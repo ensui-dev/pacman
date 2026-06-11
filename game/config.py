@@ -2,21 +2,23 @@
 
 The engine parser reads ``sys.argv`` directly; until it accepts a path argument
 (request 03 §2.1) this wraps it by setting argv temporarily, so we reuse its
-comment stripping, validation and clamping instead of duplicating them. Used by
-``pac-man.py`` (fail fast on a bad config) and by the Reflex app (which reads the
-resolved path from ``$PACMAN_CONFIG``).
+comment stripping, validation and clamping instead of duplicating them. Used
+by ``pac-man.py`` (fail fast on a bad config) and by the Reflex app (which
+reads the resolved path from ``$PACMAN_CONFIG``).
 """
 from __future__ import annotations
 
 import os
 import sys
 
-# Temporary: put the engine/parser on the path until the repo restructure moves
-# them to the root and this shim (and game.game's) can be dropped.
+# parser/ lives in the pacman-core git submodule. Append it (don't insert)
+# so the installed mazegenerator wheel keeps priority over the submodule's
+# vendored copy, while the submodule-only packages still resolve. See
+# game/game.py.
 _CORE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pacman-core")
 if _CORE not in sys.path:
-    sys.path.insert(0, _CORE)
+    sys.path.append(_CORE)
 
 # Safe defaults used when no config is provided (dev) or one fails to load.
 DEFAULT_CONFIG: dict[str, object] = {
@@ -38,13 +40,15 @@ def load_config(path: str) -> dict[str, object]:
     saved = sys.argv
     try:
         sys.argv = ["pac-man.py", path]
-        return _parser()
+        # the parser package resolves via sys.path at runtime; Any to mypy
+        config: dict[str, object] = _parser()
+        return config
     finally:
         sys.argv = saved
 
 
 def runtime_config() -> dict[str, object]:
-    """Config for the running app: from ``$PACMAN_CONFIG`` if set, else default.
+    """Config for the running app, from ``$PACMAN_CONFIG`` or defaults.
 
     Never raises — a missing/broken config falls back to the defaults so the UI
     process can't crash at import (the launcher validates and reports errors).

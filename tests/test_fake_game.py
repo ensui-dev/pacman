@@ -84,8 +84,8 @@ def test_final_level_skip_is_victory() -> None:
 def test_super_pacgum_frightens_ghosts() -> None:
     g = _new()
     # Walk the player onto a corner super-pacgum by forcing it there.
-    g._player = (0, 0)  # type: ignore[attr-defined]
-    g._eat([])          # type: ignore[attr-defined]
+    g._player = (0, 0)
+    g._eat([])
     assert g.view["frightened_ticks_left"] > 0
     assert any(gh["state"] == GhostState.FRIGHTENED.value
                for gh in g.view["ghosts"])
@@ -95,8 +95,8 @@ def test_invincible_cheat_prevents_life_loss() -> None:
     g = _new()
     g.set_cheat("invincible", True)
     # Drop a chasing ghost directly on the player and resolve.
-    g._ghosts[0].pos = g._player              # type: ignore[attr-defined]
-    g._ghosts[0].state = GhostState.CHASE     # type: ignore[attr-defined]
+    g._ghosts[0].pos = g._player
+    g._ghosts[0].state = GhostState.CHASE
     g._resolve_collisions(
         g._player,
         [
@@ -106,7 +106,7 @@ def test_invincible_cheat_prevents_life_loss() -> None:
             (9, 9)
         ],
         []
-    )  # type: ignore[attr-defined]
+    )
     assert g.view["lives"] == 3
 
 

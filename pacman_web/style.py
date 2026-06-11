@@ -53,10 +53,6 @@ GHOST_COLORS = {
 FONT_DISPLAY = "'Press Start 2P', 'Courier New', monospace"
 FONT_BODY = "'VT323', 'Courier New', monospace"
 
-# -- Wall edge strings
-WALL_EDGE = f"{WALL_PX}px solid {MAZE_WALL}"
-NO_EDGE = f"{WALL_PX}px solid transparent"   # keeps cell box size stable
-
 # -- Reusable style dicts
 BUTTON_STYLE: dict[str, str] = {
     "font_family": FONT_DISPLAY,

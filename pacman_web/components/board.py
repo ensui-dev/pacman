@@ -1,23 +1,25 @@
-"""The maze board: static wall layer + the per-tick entity overlay.
+"""The maze board: static SVG layers + the per-tick entity overlay.
 
 Everything is positioned on a CSS grid driven by the ``--cell`` custom property
 (set on the game screen, inherited here), so the board scales to the viewport
-without re-syncing. Walls are built once per level; pellets and sprites are
-absolutely-positioned overlays. Player and ghosts glide via a CSS transition
-tied to the tick rate, so a delayed update becomes a catch-up glide, not snap.
+without re-syncing. Walls and pellets are each a single server-built SVG
+(one DOM node apiece — walls rebuilt per level, pellets only on eating ticks);
+sprites are absolutely-positioned overlays. Player and ghosts glide via a CSS
+transition tied to the tick rate, so a delayed update becomes a catch-up
+glide, not snap.
 """
 from __future__ import annotations
 
 import reflex as rx
 
 from pacman_web import style
+from pacman_web.components import as_component
 from pacman_web.state import (
     Dot,
     GameState,
     MOVE_TRANSITION,
     Popup,
     Sprite,
-    WallCell,
 )
 
 # Pac-Man mouth: a transparent wedge cut from a yellow disc, pointing right;
@@ -28,11 +30,12 @@ _PLAYER_BG = (
 )
 
 
-def _at(gx, gy, *children, **props) -> rx.Component:
+def _at(gx: int, gy: int, *children: rx.Component,
+        **props: object) -> rx.Component:
     """
     A cell-sized slot positioned at grid (gx, gy), centering its children.
     """
-    return rx.box(
+    return as_component(rx.box(
         *children,
         position="absolute",
         left=f"calc(var(--cell) * {gx})",
@@ -43,33 +46,23 @@ def _at(gx, gy, *children, **props) -> rx.Component:
         align_items="center",
         justify_content="center",
         **props,
-    )
+    ))
 
 
-def _wall_cell(cell: WallCell) -> rx.Component:
-    """One static wall cell — edges per bit, solid blocks filled."""
-    return rx.box(
+def _static_layer(svg: str) -> rx.Component:
+    """A board-filling layer rendering one server-built SVG string.
+
+    One DOM node regardless of maze size — the whole point of the SVG
+    layers; see ``state._walls_svg`` / ``state._pellets_svg``.
+    """
+    return as_component(rx.html(
+        svg,
         position="absolute",
-        left=f"calc(var(--cell) * {cell.gx})",
-        top=f"calc(var(--cell) * {cell.gy})",
-        width="var(--cell)",
-        height="var(--cell)",
-        border_top=cell.bt,
-        border_right=cell.br,
-        border_bottom=cell.bb,
-        border_left=cell.bl,
-        background_color=rx.cond(cell.solid, style.BLOCK_FILL, "transparent"),
-        box_sizing="border-box",
-    )
-
-
-def _pellet(dot: Dot) -> rx.Component:
-    """A small pacgum dot."""
-    return _at(
-        dot.gx, dot.gy,
-        rx.box(width=style.PELLET_PCT, height=style.PELLET_PCT,
-               background_color=style.PELLET, border_radius="9999px"),
-    )
+        inset="0",
+        width="100%",
+        height="100%",
+        pointer_events="none",
+    ))
 
 
 def _super(dot: Dot) -> rx.Component:
@@ -85,24 +78,24 @@ def _super(dot: Dot) -> rx.Component:
 
 def _eye() -> rx.Component:
     """A single white ghost eye (sized off the cell so it never collapses)."""
-    return rx.box(
+    return as_component(rx.box(
         width="calc(var(--cell) * 0.18)",
         height="calc(var(--cell) * 0.18)",
         background_color="#fff",
         border_radius="9999px",
-    )
+    ))
 
 
 def _eyes() -> rx.Component:
-    """The white eyes — present on every ghost, the only thing left when eaten."""
-    return rx.hstack(
+    """The white eyes — on every ghost, the only thing left when eaten."""
+    return as_component(rx.hstack(
         _eye(), _eye(),
         spacing="1",
         justify="center",
         width="100%",
         position="absolute",
         top="22%",
-    )
+    ))
 
 
 def _ghost(sprite: Sprite) -> rx.Component:
@@ -130,7 +123,7 @@ def _ghost(sprite: Sprite) -> rx.Component:
 
 def _player() -> rx.Component:
     """The single player overlay (yellow disc with a directional mouth)."""
-    return rx.box(
+    return as_component(rx.box(
         rx.box(
             width=style.SPRITE_PCT,
             height=style.SPRITE_PCT,
@@ -149,7 +142,7 @@ def _player() -> rx.Component:
         justify_content="center",
         transition=MOVE_TRANSITION,
         z_index="10",
-    )
+    ))
 
 
 def _arrow() -> rx.Component:
@@ -166,7 +159,7 @@ def _arrow() -> rx.Component:
         transform="translateX(-50%)",
         filter=f"drop-shadow(0 0 3px {style.PAC_YELLOW})",
     )
-    return rx.cond(
+    return as_component(rx.cond(
         GameState.show_arrow,
         rx.box(
             rx.box(triangle, width="100%", height="100%", position="relative",
@@ -180,7 +173,7 @@ def _arrow() -> rx.Component:
             pointer_events="none",
             z_index="11",
         ),
-    )
+    ))
 
 
 def _popup(popup: Popup) -> rx.Component:
@@ -198,7 +191,7 @@ def _popup(popup: Popup) -> rx.Component:
 
 def _focus_catcher() -> rx.Component:
     """Transparent input that captures keystrokes for the board."""
-    return rx.el.input(
+    return as_component(rx.el.input(
         id="keycatcher",
         on_key_down=GameState.on_key,
         auto_focus=True,
@@ -214,14 +207,14 @@ def _focus_catcher() -> rx.Component:
         # clicks and Resume/Main-menu stop working.
         z_index="15",
         style={"caretColor": "transparent"},
-    )
+    ))
 
 
 def maze_board() -> rx.Component:
     """Assemble the board: walls, pellets, sprites, player, key catcher."""
-    return rx.box(
-        rx.foreach(GameState.walls, _wall_cell),
-        rx.foreach(GameState.pellets, _pellet),
+    return as_component(rx.box(
+        _static_layer(GameState.walls_svg),
+        _static_layer(GameState.pellets_svg),
         rx.foreach(GameState.supers, _super),
         rx.foreach(GameState.ghosts, _ghost),
         _player(),
@@ -235,4 +228,4 @@ def maze_board() -> rx.Component:
         border="4px solid #1b1b2e",
         border_radius="12px",
         box_shadow="inset 0 0 40px rgba(0,0,0,.8)",
-    )
+    ))

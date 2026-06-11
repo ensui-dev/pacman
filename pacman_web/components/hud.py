@@ -4,24 +4,25 @@ from __future__ import annotations
 import reflex as rx
 
 from pacman_web import style
+from pacman_web.components import as_component
 from pacman_web.state import GameState
 
 
 def _chip(label: str, value: rx.Component, min_w: str = "7ch") -> rx.Component:
     """A labelled HUD cell with a fixed min width so values never reflow."""
-    return rx.vstack(
+    return as_component(rx.vstack(
         rx.text(label, font_size="0.6rem", color=style.UI_DIM,
                 letter_spacing="0.1em"),
         value,
         spacing="1",
         align="start",
         min_width=min_w,
-    )
+    ))
 
 
 def _life_icon(_: int) -> rx.Component:
     """A small pac icon representing one life."""
-    return rx.box(
+    return as_component(rx.box(
         class_name="life-pop",
         width="16px", height="16px",
         background=(
@@ -29,14 +30,14 @@ def _life_icon(_: int) -> rx.Component:
             f"{style.PAC_YELLOW} 50deg 360deg)"
         ),
         border_radius="9999px",
-    )
+    ))
 
 
 def hud_bar() -> rx.Component:
     """Score / lives / level / time, plus the frightened meter."""
     big = {"font_family": style.FONT_DISPLAY, "font_size": "1rem",
            "color": style.UI_TEXT}
-    return rx.vstack(
+    return as_component(rx.vstack(
         rx.hstack(
             _chip("SCORE", rx.text(GameState.score, **big), min_w="9ch"),
             _chip(
@@ -72,4 +73,4 @@ def hud_bar() -> rx.Component:
         width="100%",
         padding="8px 12px",
         border_bottom=f"2px solid {style.MAZE_WALL}",
-    )
+    ))

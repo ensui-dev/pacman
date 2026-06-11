@@ -6,10 +6,16 @@ persistent "CHEATS ACTIVE" tag so the defense stays honest.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import reflex as rx
 
 from pacman_web import style
+from pacman_web.components import as_component
 from pacman_web.state import GameState
+
+if TYPE_CHECKING:
+    from reflex.event import EventNamespace
 
 _SECONDARY_BUTTON: dict[str, str] = {
     "font_family": style.FONT_DISPLAY,
@@ -23,9 +29,10 @@ _SECONDARY_BUTTON: dict[str, str] = {
 }
 
 
-def _toggle(label: str, desc: str, checked, on_change) -> rx.Component:
+def _toggle(label: str, desc: str, checked: bool,
+            on_change: EventNamespace) -> rx.Component:
     """One labelled cheat toggle row."""
-    return rx.hstack(
+    return as_component(rx.hstack(
         rx.vstack(
             rx.text(label, color=style.UI_TEXT, font_family=style.FONT_BODY,
                     font_size="1.1rem"),
@@ -37,18 +44,19 @@ def _toggle(label: str, desc: str, checked, on_change) -> rx.Component:
         rx.switch(checked=checked, on_change=on_change),
         width="100%",
         align="center",
-    )
+    ))
 
 
 def cheat_button() -> rx.Component:
     """The discoverable button that opens the panel (mouse parity for 'c')."""
-    return rx.el.button("Cheats (c)", on_click=GameState.toggle_cheats,
-                        style=_SECONDARY_BUTTON)
+    return as_component(rx.el.button(
+        "Cheats (c)", on_click=GameState.toggle_cheats,
+        style=_SECONDARY_BUTTON))
 
 
 def cheats_tag() -> rx.Component:
     """Persistent 'CHEATS ACTIVE' marker once any cheat is used."""
-    return rx.cond(
+    return as_component(rx.cond(
         GameState.cheats_used,
         rx.box(
             rx.text("CHEATS ACTIVE", font_family=style.FONT_DISPLAY,
@@ -56,12 +64,12 @@ def cheats_tag() -> rx.Component:
             border=f"1px solid {style.DANGER}",
             padding="2px 6px",
         ),
-    )
+    ))
 
 
 def cheat_panel() -> rx.Component:
     """The slide-in cheat panel (always mounted; slides off-screen)."""
-    return rx.box(
+    return as_component(rx.box(
         rx.vstack(
             rx.hstack(
                 rx.heading("CHEATS", font_family=style.FONT_DISPLAY,
@@ -105,4 +113,4 @@ def cheat_panel() -> rx.Component:
         transition="transform 200ms ease-out",
         pointer_events=rx.cond(GameState.cheat_open, "auto", "none"),
         z_index="40",
-    )
+    ))

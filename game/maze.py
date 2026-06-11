@@ -25,7 +25,8 @@ def build_maze(width: int, height: int, seed: int) -> list[list[int]]:
     try:
         sys.setrecursionlimit(max(1000, width * height + 100))
         gen = MazeGenerator(size=(width, height), perfect=False, seed=seed)
-        maze = gen.maze
+        # the wheel ships no py.typed, so gen.maze is Any to mypy
+        maze: list[list[int]] = gen.maze
     except RecursionError as exc:
         raise MazeGenerationError(
             f"maze {width}x{height} is too large to generate"
