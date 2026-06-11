@@ -10,6 +10,7 @@ AI, and rules replace it later with no UI change
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Optional
 
@@ -45,6 +46,7 @@ class _Ghost:
     home: Pos
     color: str
     state: GhostState
+    last: Pos = (0, 0)            # last step taken (to avoid reversing while fleeing)
 
 
 def _to_int(config: dict[str, object], key: str, default: int,
@@ -96,6 +98,7 @@ class FakeGame:
         self._game_over = False
         self._won_game = False
         self._cheats: dict[str, bool] = {}
+        self._rng = random.Random(20240611)   # deterministic wander for frightened
         self.start_level(0)
 
     # -- setup
@@ -128,13 +131,13 @@ class FakeGame:
             for home, color in zip(corners, _GHOST_COLORS)
         ]
 
-    # ------------------------------------------------------------------ input
+    # -- input
     def request_direction(self, dx: int, dy: int) -> None:
         """Buffer a heading; applied next tick it is legal (classic feel)."""
         if (dx, dy) in _DIR_NAME:
             self._requested = (dx, dy)
 
-    # ------------------------------------------------------------------- step
+    # -- step
     def tick(self) -> list[GameEvent]:
         """Advance one step and return the events that occurred, in order."""
         if self._game_over or self._level_won:
@@ -201,6 +204,26 @@ class FakeGame:
                     g.state = GhostState.FRIGHTENED
             events.append(GameEvent.SUPER_PACGUM_EATEN)
 
+    def _chase_target(self, g: _Ghost) -> Pos:
+        """A distinct target per ghost so they don't all share one path.
+
+        A loose echo of the four arcade personalities (the real engine owns the
+        authoritative versions); here it mainly keeps the four ghosts visually
+        separated on the open arena instead of stacking on one cell.
+        """
+        px, py = self._player
+        dx, dy = self._player_dir
+        if g.color == "red":            # Agressor: straight at the player
+            return (px, py)
+        if g.color == "pink":           # Ambusher: a few cells ahead
+            return (px + 2 * dx, py + 2 * dy)
+        if g.color == "cyan":           # Unpredictable: ahead, mirrored
+            return (px - 2 * dx, py - 2 * dy)
+        # orange (Wanderer): chase from afar, scatter home when close
+        if abs(px - g.pos[0]) + abs(py - g.pos[1]) <= 4:
+            return g.home
+        return (px, py)
+
     def _move_ghosts(self) -> None:
         """Greedy one-cell step per ghost;
         flee when frightened, home when eaten."""
@@ -211,9 +234,12 @@ class FakeGame:
                     continue
                 g.pos = self._greedy_step(g.pos, g.home, flee=False)
             elif g.state == GhostState.FRIGHTENED:
-                g.pos = self._greedy_step(g.pos, self._player, flee=True)
+                # Wander randomly while edible: keeps the four moving and apart,
+                # unlike a shared flee target (they'd merge) or a fixed corner
+                # (they'd pile up and freeze). Close to arcade frightened motion.
+                g.pos = self._wander_step(g)
             else:
-                g.pos = self._greedy_step(g.pos, self._player, flee=False)
+                g.pos = self._greedy_step(g.pos, self._chase_target(g), flee=False)
 
     def _resolve_collisions(self, prev_player: Pos, prev_ghosts: list[Pos],
                             events: list[GameEvent]) -> None:
@@ -349,6 +375,19 @@ class FakeGame:
             if best_score is None or score < best_score:
                 best, best_score = nxt, score
         return best
+
+    def _wander_step(self, g: _Ghost) -> Pos:
+        """Pick a random legal neighbor, preferring not to reverse direction."""
+        x, y = g.pos
+        moves = [(dx, dy) for dx, dy, bit in _STEPS
+                 if not (self._maze[y][x] & bit)]
+        if not moves:
+            return g.pos
+        reverse = (-g.last[0], -g.last[1])
+        forward = [m for m in moves if m != reverse]
+        step = self._rng.choice(forward or moves)
+        g.last = step
+        return (x + step[0], y + step[1])
 
     def _nearest_open(self, target: Pos) -> Pos:
         """Nearest non-solid cell to ``target`` (BFS ring) — used for spawning.

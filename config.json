@@ -1,0 +1,35 @@
+{
+    # Lives the player starts with
+    "lives": 3,
+
+    # Percent of corridor cells that carry a pacgum (0-100)
+    "pacgum": 60,
+
+    # Scoring
+    "points_per_pacgum": 10,
+    "points_per_super_pacgum": 50,
+    "points_per_ghost": 200,
+
+    # Maze seed for level 1 (levels 2+ are random)
+    "seed": 42,
+
+    # Seconds allowed per level before a life is lost
+    "level_max_time": 90,
+
+    # Where the top-10 highscores are stored
+    "highscore_filename": "highscores.json",
+
+    # Per-level maze sizes (at least 10 levels), growing as you progress
+    "levels": [
+        {"width": 19, "height": 19},
+        {"width": 21, "height": 21},
+        {"width": 21, "height": 21},
+        {"width": 23, "height": 23},
+        {"width": 25, "height": 23},
+        {"width": 25, "height": 25},
+        {"width": 27, "height": 25},
+        {"width": 27, "height": 27},
+        {"width": 29, "height": 27},
+        {"width": 31, "height": 29}
+    ]
+}

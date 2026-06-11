@@ -1,0 +1,108 @@
+/* Cabinet Glass theme — global tokens + the CRT glass overlay.
+   Python mirrors these tokens in pacman_web/style.py. */
+
+/* Self-hosted pixel fonts (vendored .woff2 — no runtime CDN, works offline). */
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/press-start-2p.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/vt323.woff2') format('woff2');
+}
+
+:root {
+  --bg-room:        #0a0a12;
+  --bg-screen:      #04040a;
+  --maze-wall:      #2330d8;
+  --maze-wall-glow: #4250ff;
+  --block-fill:     #1b2470;
+  --pac-yellow:     #ffdf00;
+  --pellet:         #ffe9b3;
+  --ghost-red:      #ff3b30;
+  --ghost-pink:     #ff9ad5;
+  --ghost-cyan:     #29e6e6;
+  --ghost-orange:   #ffb24d;
+  --frightened:     #2b43ff;
+  --frightened-end: #f4f4ff;
+  --ui-text:        #e8e8f0;
+  --ui-dim:         #8a8aa0;
+  --accent:         var(--pac-yellow);
+  --danger:         #ff3b30;
+}
+
+/* The room: dim arcade behind the cabinet. */
+body {
+  background:
+    radial-gradient(ellipse at center, #15152400 40%, #000 100%),
+    var(--bg-room);
+  color: var(--ui-text);
+  margin: 0;
+}
+
+/* "Window too small" guard: hidden until the viewport is genuinely tiny. */
+.too-small { display: none; }
+@media (max-width: 340px), (max-height: 380px) {
+  .too-small {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--bg-screen);
+  }
+}
+
+/* The glass: one fixed overlay above everything (scanlines + vignette). */
+.crt-glass {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0)    0px,
+      rgba(0,0,0,0)    2px,
+      rgba(0,0,0,0.22) 3px,
+      rgba(0,0,0,0)    4px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.45) 100%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .crt-glass { animation: crt-flicker 4s steps(20) infinite; }
+  @keyframes crt-flicker {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.97; }
+  }
+  .super-pulse { animation: super-pulse 0.9s ease-in-out infinite; }
+  @keyframes super-pulse {
+    0%, 100% { transform: scale(1);    opacity: 1;   }
+    50%      { transform: scale(1.25); opacity: 0.7; }
+  }
+
+  .frightened-blink { animation: fblink 0.25s steps(1) infinite; }
+  @keyframes fblink {
+    50% { background-color: var(--frightened-end); }
+  }
+
+  .score-pop { animation: scorepop 0.4s ease-out forwards; }
+  @keyframes scorepop {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-16px); }
+  }
+
+  .life-pop { animation: lifepop 0.3s ease-out; }
+  @keyframes lifepop {
+    from { transform: scale(0.2); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+}

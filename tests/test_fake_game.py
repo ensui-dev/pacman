@@ -1,8 +1,6 @@
 """Tests for the FakeGame stub.
 
-These pin the behaviours the UI relies on while building against the stub, and
-double as an executable check that ``FakeGame`` satisfies the ``GameProtocol``
-contract. Run from the repo root: ``python -m pytest tests/``.
+Run from the repo root: ``python -m pytest tests/``.
 """
 from __future__ import annotations
 
@@ -99,7 +97,16 @@ def test_invincible_cheat_prevents_life_loss() -> None:
     # Drop a chasing ghost directly on the player and resolve.
     g._ghosts[0].pos = g._player              # type: ignore[attr-defined]
     g._ghosts[0].state = GhostState.CHASE     # type: ignore[attr-defined]
-    g._resolve_collisions(g._player, [(9, 9), (9, 9), (9, 9), (9, 9)], [])  # type: ignore[attr-defined]
+    g._resolve_collisions(
+        g._player,
+        [
+            (9, 9),
+            (9, 9),
+            (9, 9),
+            (9, 9)
+        ],
+        []
+    )  # type: ignore[attr-defined]
     assert g.view["lives"] == 3
 
 
