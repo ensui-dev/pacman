@@ -133,6 +133,18 @@ def test_frightened_ghost_moves_at_half_speed() -> None:
     assert moves < 10                            # not every tick -> catchable
 
 
+def test_chase_ghost_slightly_slower_than_player() -> None:
+    g = _new()
+    ghost = g._ghosts[0]                         # Agressor: always pathing
+    moves = 0
+    for _ in range(10):
+        before = ghost.get_position()
+        g._move_ghosts()
+        if ghost.get_position() != before:
+            moves += 1
+    assert moves == 8                            # skips 1 tick in 5 (~80%)
+
+
 def test_timeout_costs_a_life() -> None:
     g = _new(level_max_time=1)                    # player stays put (no input)
     lives0 = g.view["lives"]

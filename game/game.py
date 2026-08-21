@@ -1,4 +1,4 @@
-"""Real ``Game`` orchestrator — implements ``GameProtocol`` on the core engine.
+"""Real ``Game`` orchestrator, implements ``GameProtocol`` on the core engine.
 
 This is the seam the UI was built against via ``FakeGame``; swapping to this
 class needs no UI change. It owns the rules the engine doesn't: collisions,
@@ -26,7 +26,7 @@ from game.contract import GameEvent, GameView, GhostView
 from game.maze import MazeGenerationError, build_maze
 
 # engine/ and parser/ live in the pacman-core git submodule (the colleague's
-# repo). Append it to the path — appending (not inserting) keeps site-packages
+# repo). Append it to the path, appending (not inserting) keeps site-packages
 # ahead, so the installed mazegenerator *wheel* wins over the submodule's
 # vendored copy (avoiding the import-shadowing trap), while engine/parser,
 # which exist only here, still resolve.
@@ -44,6 +44,9 @@ Pos = tuple[int, int]
 _TICKS_PER_SECOND = 5
 _FRIGHTENED_TICKS = 6 * _TICKS_PER_SECOND
 _SPAWN_PROTECT_TICKS = 2 * _TICKS_PER_SECOND
+# Chasing ghosts sit out 1 tick in N -> ~80% of player speed, like the
+# arcade's slightly-slower ghosts. Frightened halves again; eyes run full.
+_CHASE_SKIP_EVERY = 5
 _MIN_SIZE, _MAX_SIZE, _DEFAULT_SIZE = 15, 61, 21
 
 _DIR_NAME = {(0, -1): "up", (0, 1): "down", (-1, 0): "left", (1, 0): "right"}
@@ -98,7 +101,7 @@ class Game:
         self._cheats: dict[str, bool] = {}
         self.start_level(0)
 
-    # ------------------------------------------------------------------ setup
+    #  setup
     def _level_size(self, index: int) -> tuple[int, int]:
         """Maze size for a level, from config, clamped to a safe range."""
         width = height = _DEFAULT_SIZE
@@ -130,6 +133,7 @@ class Game:
         self._requested: Optional[Pos] = None
         self._facing = "left"
         self._fright_skip = False        # frightened ghosts move at half speed
+        self._chase_tick = 0             # cadence for the chase-speed skip
 
         width, height = self._level_size(index)
         seed = self._seed if index == 0 else 0     # level 1 fixed, rest random
@@ -166,13 +170,13 @@ class Game:
             for strategy, home in zip(_STRATEGIES, self._homes)
         ]
 
-    # ------------------------------------------------------------------ input
+    #  input
     def request_direction(self, dx: int, dy: int) -> None:
         """Buffer a heading; applied at the next tick where it is legal."""
         if (dx, dy) in _DIR_NAME:
             self._requested = (dx, dy)
 
-    # ------------------------------------------------------------------- step
+    #  step
     def tick(self) -> list[GameEvent]:
         """Advance one step; return events in occurrence order."""
         if self._game_over or self._level_won:
@@ -264,10 +268,14 @@ class Game:
         player_dir = self._player.get_direction() or (0, 0)
         blinky = self._ghosts[0].get_position()      # Agressor == Blinky
         self._fright_skip = not self._fright_skip
+        self._chase_tick = (self._chase_tick + 1) % _CHASE_SKIP_EVERY
         for ghost, home in zip(self._ghosts, self._homes):
             state_ = ghost.get_state()
             if state_ == State.FRIGHTENED and self._fright_skip:
                 continue                             # half speed -> catchable
+            if (state_ in (State.CHASE, State.SCATTER)
+                    and self._chase_tick == 0):
+                continue                             # ~80% -> outrunnable
             if state_ == State.EATEN:
                 # Neutralise the strategy's offset so eaten ghosts reach home.
                 gs = {"pos": ghost.get_position(), "player_pos": player_pos,
@@ -324,7 +332,7 @@ class Game:
             self._game_over = True
             events.append(GameEvent.VICTORY)
 
-    # ------------------------------------------------------------------ cheats
+    #  cheats
     def set_cheat(self, name: str, on: bool) -> None:
         """Toggle ``invincible``/``freeze``/``speed``; unknown ignored."""
         if name in ("invincible", "freeze", "speed"):
@@ -343,7 +351,7 @@ class Game:
         if self._game_over and self._lives > 0 and not self._won_game:
             self._game_over = False
 
-    # ------------------------------------------------------------------ status
+    #  status
     def is_level_won(self) -> bool:
         """True once all pellets are eaten (cleared by ``start_level``)."""
         return self._level_won
@@ -375,7 +383,7 @@ class Game:
             "frightened_ticks_left": self._frightened_ticks,
         }
 
-    # --------------------------------------------------------------- helpers
+    # helpers
     def _nearest_open(self, target: Pos) -> Pos:
         """Nearest non-solid cell to ``target`` by BFS ring (spawn helper)."""
         from collections import deque
