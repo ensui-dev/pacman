@@ -11,6 +11,7 @@ import reflex as rx
 
 from pacman_web import style
 from pacman_web.components import as_component
+from pacman_web.components.audio import sfx_channels
 from pacman_web.components.screens import (
     exited_screen,
     game_over_screen,
@@ -31,7 +32,7 @@ def _crt_glass() -> rx.Component:
 def _too_small() -> rx.Component:
     """Friendly guard shown (via CSS media query) on a too-small window."""
     return as_component(rx.box(
-        rx.text("Window too small — please enlarge to play.",
+        rx.text("Window too small, please enlarge to play.",
                 font_family=style.FONT_BODY, font_size="1.3rem",
                 color=style.UI_TEXT, text_align="center"),
         class_name="too-small",
@@ -53,6 +54,7 @@ def index() -> rx.Component:
         ),
         _crt_glass(),
         _too_small(),
+        sfx_channels(),
         background_color=style.BG_ROOM,
         min_height="100vh",
         width="100%",

@@ -16,10 +16,16 @@ from typing import TYPE_CHECKING, cast
 import reflex as rx
 
 if TYPE_CHECKING:
-    # mypy-only: chained-handler returns type as EventNamespace under the
-    # stubs; at runtime these names are unimportable (lazy loader) and the
-    # postponed annotations are never evaluated.
+    # mypy resolves these from the stubs; chained-handler returns type as
+    # EventNamespace there.
     from reflex.event import EventNamespace, EventSpec
+else:
+    # Reflex resolves handler annotations at runtime when transforming each
+    # event payload (get_type_hints), so both names must really exist here.
+    # The lazy loader can't import EventNamespace by name, but ``rx.event``
+    # *is* the EventNamespace class at runtime.
+    from reflex.event import EventSpec
+    EventNamespace = rx.event
 
 import highscores
 from game.config import runtime_config
@@ -36,8 +42,45 @@ _EVENT_POINTS: dict[GameEvent, tuple[str, int]] = {
 
 TICK_MS = 180
 READY_MS = 1000
+START_MS = 2200                    # first READY holds under the start jingle
+DEATH_MS = 1500                    # board freezes under the death spiral
 POPUP_TICKS = 2                     # how many ticks a score popup lingers
 FRIGHTENED_BLINK_TICKS = 10        # blink ghosts for ending ~2s of frightened
+
+# Sound set: "/sfx" (arcade originals, keep out of public builds) or
+# "/sfx_generated" (our own set from tools/generate_sfx.py). One knob.
+SFX_DIR = "/sfx"
+
+# Game events that fire a one-shot sound (pacgums get the waka treatment
+# separately so the two chomp samples can alternate).
+_EVENT_SOUNDS: dict[GameEvent, str] = {
+    GameEvent.SUPER_PACGUM_EATEN: "eat_fruit",
+    GameEvent.GHOST_EATEN: "eat_ghost",
+    GameEvent.LIFE_LOST: "death_0",
+    GameEvent.VICTORY: "intermission",
+}
+
+
+def _ambient_name(playing: bool, any_eaten: bool, frightened: bool,
+                  pellets_left: int, pellets_total: int) -> str:
+    """Pick the single background loop for the current situation.
+
+    Priority: eyes > fright > siren tier (escalating as pellets deplete,
+    like the arcade) > silence ("" when not actively playing).
+    """
+    if not playing:
+        return ""
+    if any_eaten:
+        return "eyes"
+    if frightened:
+        return "fright"
+    if pellets_total <= 0:
+        return "siren0"
+    eaten_frac = 1 - pellets_left / pellets_total
+    tier = min(4, int(eaten_frac * 5))
+    return f"siren{tier}"
+
+
 MOVE_TRANSITION = f"left {TICK_MS}ms linear, top {TICK_MS}ms linear"
 
 # Direction name -> rotation for buffered-direction triangle (points up at 0).
@@ -97,7 +140,7 @@ def _walls_svg(maze: list[list[int]]) -> str:
 
     Coordinates are in cell units (``viewBox`` = cols×rows); the stroke is
     kept at ``WALL_PX`` device pixels via ``non-scaling-stroke`` so the look
-    matches the old per-cell borders at any board size. Built once per level —
+    matches the old per-cell borders at any board size. Built once per level,
     large mazes would otherwise mean thousands of wall divs in the DOM.
     """
     rows, cols = len(maze), len(maze[0])
@@ -132,7 +175,7 @@ def _pellets_svg(pellets: list[list[int]], cols: int, rows: int) -> str:
     string is far cheaper (server, wire and React) than re-diffing one
     component per pellet every tick on large mazes. Each dot is a
     near-zero-length path segment rendered as a disc by the round line
-    cap — one ``<path>`` for the whole layer keeps the string a third
+    cap, one ``<path>`` for the whole layer keeps the string a third
     the size of per-``<circle>`` markup.
     """
     dots = "".join(f"M{x}.5 {y}.5h.01" for x, y in pellets)
@@ -210,6 +253,15 @@ class GameState(rx.State):
     cheat_speed: bool = False
     cheats_used: bool = False
 
+    # -- sound channels (see components.audio): a URL change (seq bump)
+    # makes the player reload and autoplay; ambient is a steady loop var.
+    muted: bool = False
+    ambient: str = ""
+    shot_file: str = ""
+    shot_seq: int = 0
+    chomp_file: str = ""
+    chomp_seq: int = 0
+
     high_rows: list[HighRow] = []
     awaiting_name: bool = False
     name_input: str = ""
@@ -224,6 +276,8 @@ class GameState(rx.State):
     # Counts mirrored last sync; -1 forces a rebuild of the derived layer.
     _pellet_count: int = -1
     _super_count: int = -1
+    _pellet_total: int = 0
+    _chomp_flip: bool = False
 
     # -- computed vars
     @rx.var
@@ -272,6 +326,25 @@ class GameState(rx.State):
     def frightened(self) -> bool:
         """Whether ghosts are currently edible (drives the HUD meter)."""
         return self.frightened_ticks_left > 0
+
+    @rx.var
+    def ambient_src(self) -> str:
+        """URL of the active background loop file."""
+        return f"{SFX_DIR}/{self.ambient}.wav" if self.ambient else ""
+
+    @rx.var
+    def shot_src(self) -> str:
+        """URL of the last one-shot; the seq makes repeats re-play."""
+        if not self.shot_file:
+            return ""
+        return f"{SFX_DIR}/{self.shot_file}.wav?n={self.shot_seq}"
+
+    @rx.var
+    def chomp_src(self) -> str:
+        """URL of the alternating dot-chomp channel."""
+        if not self.chomp_file:
+            return ""
+        return f"{SFX_DIR}/{self.chomp_file}.wav?n={self.chomp_seq}"
 
     @rx.var
     def time_low(self) -> bool:
@@ -384,7 +457,9 @@ class GameState(rx.State):
         self._sync()
         self.screen = Screen.GAME.value
         self.paused = False
-        self._begin_ready("READY!")
+        self._begin_ready("READY!", START_MS)
+        self._play("start")
+        self.ambient = ""
         self.running = True
         self._loop_token += 1
         # run_loop is Any to mypy (its decorator call is type-ignored above)
@@ -397,6 +472,7 @@ class GameState(rx.State):
         self.paused = False
         self.confirm_quit = False
         self.screen = Screen.MENU.value
+        self.ambient = ""
 
     @rx.event
     def ask_quit(self) -> None:
@@ -414,6 +490,7 @@ class GameState(rx.State):
         """Pause or resume; only meaningful on the game screen."""
         if self.screen == Screen.GAME.value and not self.ready:
             self.paused = not self.paused
+            self._update_ambient()
             if not self.paused:
                 return GameState.refocus
         return None
@@ -421,8 +498,8 @@ class GameState(rx.State):
     @rx.event
     def refocus(self) -> EventSpec:
         """Return focus to the board's key catcher after a dialog/panel."""
-        return cast("EventSpec", rx.call_script(
-            "document.getElementById('keycatcher')?.focus()"))
+        return rx.call_script(
+            "document.getElementById('keycatcher')?.focus()")
 
     # -- cheats
     @rx.event
@@ -460,11 +537,20 @@ class GameState(rx.State):
 
     @rx.event
     def cheat_add_life(self) -> None:
-        """Grant one extra life."""
+        """Grant one extra life (with the classic extra-life jingle)."""
         if self._game is not None:
             self._game.add_life()
             self._sync()
             self.cheats_used = True
+            self._play("extend")
+
+    @rx.event
+    def toggle_mute(self) -> None:
+        """Flip sound on/off (the audio channels read the flag live)."""
+        self.muted = not self.muted
+        # clear transient channels so unmuting can't replay a stale shot
+        self.shot_file = ""
+        self.chomp_file = ""
 
     def _apply_cheat(self, name: str, value: bool) -> None:
         """Forward a cheat flag to the game and flag the run as cheated."""
@@ -493,6 +579,8 @@ class GameState(rx.State):
     def on_key(self, key: str) -> EventNamespace | None:
         """Route a keypress by screen (menu start, pause, movement)."""
         k = key.lower()
+        if k == "m" and not self.awaiting_name:
+            return GameState.toggle_mute
         if self.screen == Screen.MENU.value:
             if k in (" ", "enter"):
                 return GameState.new_game
@@ -520,11 +608,36 @@ class GameState(rx.State):
         return None
 
     # -- internals
-    def _begin_ready(self, text: str) -> None:
-        """Show the READY/LEVEL interstitial for ``READY_MS``."""
+    def _begin_ready(self, text: str, hold_ms: int = READY_MS) -> None:
+        """Freeze the board under an interstitial for ``hold_ms``."""
         self.ready = True
         self.ready_text = text
-        self._ready_ticks = max(1, READY_MS // TICK_MS)
+        self._ready_ticks = max(1, hold_ms // TICK_MS)
+
+    def _play(self, name: str) -> None:
+        """Fire a one-shot sound on the event channel."""
+        self.shot_file = name
+        self.shot_seq += 1
+
+    def _chomp(self) -> None:
+        """Fire the dot chomp, alternating the two samples (the waka)."""
+        self._chomp_flip = not self._chomp_flip
+        self.chomp_file = f"eat_dot_{int(self._chomp_flip)}"
+        self.chomp_seq += 1
+
+    def _update_ambient(self) -> None:
+        """Re-derive the background loop; assigns only on change."""
+        playing = (self.running and not self.paused and not self.ready
+                   and self.screen == Screen.GAME.value)
+        name = _ambient_name(
+            playing,
+            any(g.eaten for g in self.ghosts),
+            self.frightened_ticks_left > 0,
+            self._pellet_count,
+            self._pellet_total,
+        )
+        if name != self.ambient:
+            self.ambient = name
 
     def _step(self) -> None:
         """One loop iteration: hold during READY, else tick + sync + events."""
@@ -534,12 +647,23 @@ class GameState(rx.State):
             self._ready_ticks -= 1
             if self._ready_ticks == 0:
                 self.ready = False
+                self._update_ambient()
             return
         events = self._game.tick()
         self._sync()
         self._expire_popups()
         self._spawn_popups(events)
         self._handle_events(events)
+        for ev in events:
+            if ev == GameEvent.PACGUM_EATEN:
+                self._chomp()
+            elif ev in _EVENT_SOUNDS:
+                self._play(_EVENT_SOUNDS[ev])
+        if (GameEvent.LIFE_LOST in events
+                and GameEvent.GAME_OVER not in events):
+            # classic death pause: dim + freeze under the death spiral
+            self._begin_ready("", DEATH_MS)
+        self._update_ambient()
 
     def _expire_popups(self) -> None:
         """Age out score popups whose lifetime has elapsed."""
@@ -602,14 +726,14 @@ class GameState(rx.State):
         self._super_count = -1
 
     def _sync(self) -> None:
-        """Mirror the game's view into the serialized vars — changes only.
+        """Mirror the game's view into the serialized vars, changes only.
 
         Reflex marks a var dirty on *assignment* (it never compares values),
         and every dirty var is resent in full over the websocket each tick.
         So each mirror below is guarded: unchanged values are not assigned,
         and the pellet layer is rebuilt only when the count moved (within a
         level pellets only ever shrink). This is what keeps large maps from
-        lagging — without the guards every tick reships the whole board.
+        lagging, without the guards every tick reships the whole board.
         """
         assert self._game is not None
         v = self._game.view
@@ -632,6 +756,8 @@ class GameState(rx.State):
             self.player_dir = v["player_dir"]
 
         if len(v["pacgums"]) != self._pellet_count:
+            if self._pellet_count == -1:       # level start: capture total
+                self._pellet_total = len(v["pacgums"])
             self._pellet_count = len(v["pacgums"])
             self.pellets_svg = _pellets_svg(
                 v["pacgums"], self.board_cols, self.board_rows)

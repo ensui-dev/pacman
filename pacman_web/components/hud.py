@@ -33,6 +33,22 @@ def _life_icon(_: int) -> rx.Component:
     ))
 
 
+def _mute_button() -> rx.Component:
+    """Small sound toggle (mouse parity for the 'm' key)."""
+    return as_component(rx.el.button(
+        rx.cond(GameState.muted, "MUTED", "SOUND"),
+        on_click=GameState.toggle_mute,
+        title="Toggle sound (m)",
+        font_family=style.FONT_DISPLAY,
+        font_size="0.55rem",
+        color=rx.cond(GameState.muted, style.UI_DIM, style.PAC_YELLOW),
+        background="transparent",
+        border=f"1px solid {style.UI_DIM}",
+        padding="6px 8px",
+        cursor="pointer",
+    ))
+
+
 def hud_bar() -> rx.Component:
     """Score / lives / level / time, plus the frightened meter."""
     big = {"font_family": style.FONT_DISPLAY, "font_size": "1rem",
@@ -58,6 +74,7 @@ def hud_bar() -> rx.Component:
                 ),
                 min_w="6ch",
             ),
+            _mute_button(),
             justify="between",
             width="100%",
             align="end",
