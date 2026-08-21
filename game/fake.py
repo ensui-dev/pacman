@@ -51,7 +51,7 @@ class _Ghost:
 
 def _to_int(config: dict[str, object], key: str, default: int,
             lo: int, hi: int) -> int:
-    """Read ``key`` as an int, clamped to ``[lo, hi]`` — never trusts config.
+    """Read ``key`` as an int, clamped to ``[lo, hi]``, never trusts config.
 
     Bools and out-of-range or wrong-type values fall back to ``default`` rather
     than corrupting the game (the config is editable and may be hostile).
@@ -391,7 +391,7 @@ class FakeGame:
         return (x + step[0], y + step[1])
 
     def _nearest_open(self, target: Pos) -> Pos:
-        """Nearest non-solid cell to ``target`` (BFS ring) — used for spawning.
+        """Nearest non-solid cell to ``target`` (BFS ring), used for spawning.
 
         The arena center is a solid block, so the player can't spawn there;
         this finds the closest walkable cell instead.

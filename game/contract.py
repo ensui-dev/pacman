@@ -69,7 +69,7 @@ class GameView(TypedDict):
 class GameProtocol(Protocol):
     """The Game API. ``FakeGame`` and the real ``Game`` both conform to it.
 
-    The UI calls exactly these members and reads :attr:`view` — nothing else.
+    The UI calls exactly these members and reads :attr:`view`, nothing else.
     Implementations stay free of any UI import: game logic never depends on the
     presentation layer.
     """

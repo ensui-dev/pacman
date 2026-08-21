@@ -4,7 +4,7 @@
 Validates the argument and the config, then launches Reflex app (which reads
 the resolved config path from ``$PACMAN_CONFIG``) and opens the browser. The
 server runs in this process group, so the in-app Exit button (a SIGTERM to the
-group) tears the whole thing down — this launcher included — cleanly.
+group) tears the whole thing down, this launcher included cleanly.
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def main() -> None:
     reflex = os.path.join(os.path.dirname(sys.executable), "reflex")
     if not os.path.exists(reflex):
         _fail(
-            "reflex is not installed in this environment — run `make install`"
+            "reflex is not installed in this environment, run `make install`"
         )
 
     print(f"pac-man: starting (config: {path}) …", flush=True)

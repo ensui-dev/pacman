@@ -3,7 +3,7 @@
 Everything is positioned on a CSS grid driven by the ``--cell`` custom property
 (set on the game screen, inherited here), so the board scales to the viewport
 without re-syncing. Walls and pellets are each a single server-built SVG
-(one DOM node apiece — walls rebuilt per level, pellets only on eating ticks);
+(one DOM node apiece, walls rebuilt per level, pellets only on eating ticks);
 sprites are absolutely-positioned overlays. Player and ghosts glide via a CSS
 transition tied to the tick rate, so a delayed update becomes a catch-up
 glide, not snap.
@@ -52,7 +52,7 @@ def _at(gx: int, gy: int, *children: rx.Component,
 def _static_layer(svg: str) -> rx.Component:
     """A board-filling layer rendering one server-built SVG string.
 
-    One DOM node regardless of maze size — the whole point of the SVG
+    One DOM node regardless of maze size, the whole point of the SVG
     layers; see ``state._walls_svg`` / ``state._pellets_svg``.
     """
     return as_component(rx.html(
@@ -87,7 +87,7 @@ def _eye() -> rx.Component:
 
 
 def _eyes() -> rx.Component:
-    """The white eyes — on every ghost, the only thing left when eaten."""
+    """The white eyes, on every ghost, the only thing left when eaten."""
     return as_component(rx.hstack(
         _eye(), _eye(),
         spacing="1",
@@ -203,7 +203,7 @@ def _focus_catcher() -> rx.Component:
         opacity="0",
         cursor="pointer",
         # Above the board entities (so clicking the board focuses it) but BELOW
-        # the ready/pause overlays — otherwise this invisible input eats their
+        # the ready/pause overlays, otherwise this invisible input eats their
         # clicks and Resume/Main-menu stop working.
         z_index="15",
         style={"caretColor": "transparent"},

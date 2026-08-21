@@ -32,7 +32,7 @@ def valid_name(name: str) -> bool:
 
 
 def sanitize_name(name: str) -> str:
-    """Strip disallowed characters and cap at 10 — for live input filtering."""
+    """Strip disallowed characters and cap at 10, for live input filtering."""
     return "".join(c for c in name if c.isalnum() or c == " ")[:MAX_NAME]
 
 

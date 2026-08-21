@@ -1,4 +1,4 @@
-"""Config loading — wraps the engine's parser with a path-based interface.
+"""Config loading, wraps the engine's parser with a path-based interface.
 
 The engine parser reads ``sys.argv`` directly; until it accepts a path argument
 (request 03 §2.1) this wraps it by setting argv temporarily, so we reuse its
@@ -50,7 +50,7 @@ def load_config(path: str) -> dict[str, object]:
 def runtime_config() -> dict[str, object]:
     """Config for the running app, from ``$PACMAN_CONFIG`` or defaults.
 
-    Never raises — a missing/broken config falls back to the defaults so the UI
+    Never raises, a missing/broken config falls back to the defaults so the UI
     process can't crash at import (the launcher validates and reports errors).
     """
     path = os.environ.get("PACMAN_CONFIG")

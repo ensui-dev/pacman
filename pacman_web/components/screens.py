@@ -49,7 +49,7 @@ def _high_table() -> rx.Component:
         GameState.has_scores,
         rx.vstack(rx.foreach(GameState.high_rows, _high_row),
                   width="100%", spacing="1"),
-        rx.text("No scores yet — be the first!", color=style.UI_DIM,
+        rx.text("No scores yet, be the first!", color=style.UI_DIM,
                 font_family=style.FONT_BODY),
     ))
 
@@ -318,7 +318,7 @@ def highscores_screen() -> rx.Component:
 
 
 def instructions_screen() -> rx.Component:
-    """Controls, scoring and rules — values read live from the config."""
+    """Controls, scoring and rules, values read live from the config."""
     cfg = CONFIG
     return as_component(rx.center(
         rx.vstack(

@@ -1,7 +1,7 @@
-/* Cabinet Glass theme — global tokens + the CRT glass overlay.
+/* Cabinet Glass theme - global tokens + the CRT glass overlay.
    Python mirrors these tokens in pacman_web/style.py. */
 
-/* Self-hosted pixel fonts (vendored .woff2 — no runtime CDN, works offline). */
+/* Self-hosted pixel fonts (vendored .woff2, no runtime CDN, works offline). */
 @font-face {
   font-family: 'Press Start 2P';
   font-style: normal;
