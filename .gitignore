@@ -1,11 +1,28 @@
+# Python
 __pycache__/
-*.db
 *.py[cod]
-.web
-.statesg
-assets/external/
+*.egg-info/
+*.db
+
+# Virtual environments
+.venv/
+venv/
+
+# Reflex build / runtime
 .web/
 .states/
+reflex.lock/
+assets/external/
+
+# Tooling caches
 .pytest_cache/
 .mypy_cache/
-.venv/
+
+# Packaging output
+build/
+dist/
+
+# Runtime data (created by the game)
+highscores.json
+highscores.json.bak
+highscores.json.tmp
