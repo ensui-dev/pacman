@@ -1,2 +1,9 @@
-
+# Runtime
 reflex==0.9.5.post2
+# The assigned A-Maze-ing package, installed from the intra wheel (used as-is)
+./mazegenerator-00001-py3-none-any.whl
+
+# Dev / quality gates
+pytest
+flake8
+mypy
